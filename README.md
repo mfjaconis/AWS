@@ -153,9 +153,61 @@ Armazenamento de **objetos** (arquivos) altamente durável e escalável.
 
 ---
 
+## 7. AWS Workflows com Step Functions
+
+### Objetivo do laboratório
+Este laboratório tem como objetivo consolidar seus **workflows automatizados com AWS Step Functions**. O entregável é um repositório organizado contendo anotações e insights adquiridos durante a prática, servindo como material de apoio para os seus estudos e futuras implementações.
+
+### O que é o Step Functions
+O **AWS Step Functions** orquestra etapas de um processo em um **workflow** (máquina de estados). Em vez de encadear serviços manualmente no código, você define o fluxo (ordem, condições, retries e erros) e a AWS executa cada passo.
+
+- Cada execução do workflow tem um **estado** (estado atual da máquina).
+- Os passos podem chamar serviços como **Lambda**, **SNS**, **SQS**, **DynamoDB**, **ECS/Fargate**, entre outros.
+- O desenho do fluxo fica visual no console (Workflow Studio) e também em definição **ASL** (Amazon States Language — JSON).
+
+### Conceitos principais
+| Conceito | Descrição |
+|----------|-----------|
+| **State Machine** | A definição do workflow (os estados e as transições) |
+| **State** | Uma etapa do fluxo (Task, Choice, Wait, Parallel, Map, Succeed, Fail, etc.) |
+| **Task** | Estado que executa um trabalho (ex.: invocar uma Lambda) |
+| **Choice** | Ramificação condicional (if/else do workflow) |
+| **Wait** | Pausa por tempo ou até uma data |
+| **Parallel / Map** | Execução em paralelo ou em loop sobre uma lista |
+| **Execution** | Uma corrida concreta do workflow (com input/output e histórico) |
+| **Retry / Catch** | Tratamento de falhas: tentar de novo ou seguir para um caminho de erro |
+
+### Tipos de workflow
+| Tipo | Quando usar |
+|------|-------------|
+| **Standard** | Processos longos, auditoria completa, até 1 ano de duração |
+| **Express** | Alta vazão, curta duração, custo por execução/volume (event-driven) |
+
+### Fluxo típico de prática
+1. Defina o problema em etapas (ex.: validar → processar → notificar).
+2. Crie (ou reutilize) funções **Lambda** / integrações para cada tarefa.
+3. Monte a **state machine** no Step Functions (console ou ASL).
+4. Configure permissões IAM (role da state machine + permissões das tasks).
+5. Execute com um **input JSON** de teste e acompanhe o histórico da execução.
+6. Ajuste retries, timeouts e caminhos de erro (`Catch` / `Fail`).
+7. Documente no repositório o que funcionou, decisões e insights.
+
+### Boas práticas
+- Mantenha cada estado com **uma responsabilidade** clara.
+- Prefira **integrações otimizadas** (SDK integrations) quando possível, em vez de Lambda só para “colar” APIs.
+- Sempre trate falhas com **Retry** (erros transitórios) e **Catch** (erros esperados).
+- Versionamento: trate a definição do workflow como código (IaC / repositório).
+- Use nomes e comentários que facilitem leitura futura no material de estudos.
+
+### Exemplo mental de workflow
+`Receber pedido` → `Validar estoque (Choice)` → se ok: `Cobrar` → `Enviar notificação` → `Succeed`; se falha: `Registrar erro` → `Fail` / notificar suporte.
+
+---
+
 ## Resumo rápido
 
 1. Crie a conta → proteja o root com MFA.
 2. Configure IAM (grupos + usuários + políticas).
 3. Configure Budgets para não ser surpreendido pela fatura.
 4. Use **EC2** para computação, **EBS** como disco da EC2, **Elastic IP** para IP público fixo e **S3** para armazenar objetos.
+5. Use **Step Functions** para orquestrar workflows automatizados entre serviços AWS.
