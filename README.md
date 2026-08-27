@@ -204,6 +204,226 @@ O **AWS Step Functions** orquestra etapas de um processo em um **workflow** (má
 
 ---
 
+## 7. AWS CloudFormation
+
+O **CloudFormation** é o serviço de **Infrastructure as Code (IaC)** da AWS: você descreve a infraestrutura em um template (**YAML** ou **JSON**) e a AWS cria/atualiza/apaga os recursos de forma ordenada e repetível.
+
+### Como funciona
+1. Você escreve um **template** com recursos (`AWS::EC2::Instance`, `AWS::EC2::SecurityGroup`, etc.).
+2. Cria um **stack** no console, CLI ou SDK a partir desse template.
+3. O CloudFormation **provisiona** os recursos na ordem das dependências.
+4. Em um **update**, ele calcula o diff e aplica só o necessário.
+5. Em um **delete**, remove (na maioria dos casos) os recursos gerenciados pelo stack.
+
+### Conceitos principais
+| Conceito | Descrição |
+|----------|-----------|
+| **Template** | Arquivo YAML/JSON que descreve a infraestrutura |
+| **Stack** | Conjunto de recursos criados a partir de um template |
+| **Resources** | Seção obrigatória com os recursos AWS |
+| **Parameters** | Valores de entrada (ex.: AMI, tipo de instância) |
+| **Outputs** | Valores de saída (ex.: IP público da EC2) |
+| **Mappings / Conditions** | Mapas e condições lógicas no template |
+| **Change set** | Pré-visualização do que um update vai alterar |
+
+### Estrutura mínima de um template
+- `AWSTemplateFormatVersion` (opcional, mas comum)
+- `Description` (opcional)
+- `Parameters` (opcional)
+- `Resources` (**obrigatório**)
+- `Outputs` (opcional)
+
+### Exemplo: EC2 + Apache + firewall (Security Group)
+
+O que o stack cria:
+- **Security Group** (firewall): libera SSH (22) e HTTP (80)
+- **EC2** com `UserData` que instala e inicia o **Apache**
+- **Output** com o IP público / URL HTTP
+
+> Ajuste `ImageId` (AMI) e `KeyName` para a região e o key pair da sua conta. Exemplo abaixo usa AMI Amazon Linux 2023 em `us-east-1` — valide o ID atual na sua região.
+
+#### Versão YAML
+
+```yaml
+AWSTemplateFormatVersion: "2010-09-09"
+Description: EC2 com Apache e Security Group (HTTP + SSH)
+
+Parameters:
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Nome do key pair para SSH
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t3.micro
+
+Resources:
+  WebServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Libera SSH e HTTP
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+
+  WebServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      ImageId: ami-0c02fb55956c7d316  # troque pela AMI da sua região
+      SecurityGroupIds:
+        - !Ref WebServerSecurityGroup
+      UserData:
+        Fn::Base64: |
+          #!/bin/bash
+          dnf update -y
+          dnf install -y httpd
+          systemctl enable httpd
+          systemctl start httpd
+          echo "<h1>Apache via CloudFormation</h1>" > /var/www/html/index.html
+
+Outputs:
+  WebsiteURL:
+    Description: URL HTTP da instancia
+    Value: !Sub "http://${WebServerInstance.PublicIp}"
+  PublicIP:
+    Description: IP publico da EC2
+    Value: !GetAtt WebServerInstance.PublicIp
+```
+
+#### Versão JSON (mesmo stack)
+
+```json
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "EC2 com Apache e Security Group (HTTP + SSH)",
+  "Parameters": {
+    "KeyName": {
+      "Type": "AWS::EC2::KeyPair::KeyName",
+      "Description": "Nome do key pair para SSH"
+    },
+    "InstanceType": {
+      "Type": "String",
+      "Default": "t2.micro",
+      "AllowedValues": ["t2.micro", "t3.micro"]
+    }
+  },
+  "Resources": {
+    "WebServerSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Libera SSH e HTTP",
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 22,
+            "ToPort": 22,
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+    "WebServerInstance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "InstanceType": { "Ref": "InstanceType" },
+        "KeyName": { "Ref": "KeyName" },
+        "ImageId": "ami-0c02fb55956c7d316",
+        "SecurityGroupIds": [{ "Ref": "WebServerSecurityGroup" }],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Join": [
+              "\n",
+              [
+                "#!/bin/bash",
+                "dnf update -y",
+                "dnf install -y httpd",
+                "systemctl enable httpd",
+                "systemctl start httpd",
+                "echo \"<h1>Apache via CloudFormation</h1>\" > /var/www/html/index.html"
+              ]
+            ]
+          }
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "WebsiteURL": {
+      "Description": "URL HTTP da instancia",
+      "Value": {
+        "Fn::Sub": "http://${WebServerInstance.PublicIp}"
+      }
+    },
+    "PublicIP": {
+      "Description": "IP publico da EC2",
+      "Value": {
+        "Fn::GetAtt": ["WebServerInstance", "PublicIp"]
+      }
+    }
+  }
+}
+```
+
+### Como subir o stack (console)
+1. Console → **CloudFormation** → **Create stack** → **With new resources**.
+2. **Upload a template file** (YAML ou JSON) ou informe um URL no S3.
+3. Nomeie o stack (ex.: `ec2-apache-lab`).
+4. Preencha **KeyName** (e opcionalmente `InstanceType`).
+5. Avance, reconheça que o stack pode criar recursos IAM (se houver) e clique em **Create stack**.
+6. Aguarde `CREATE_COMPLETE` e abra a aba **Outputs** para pegar o IP/URL.
+7. No browser: `http://<PublicIP>` — deve aparecer a página do Apache.
+
+### CLI (opcional)
+```powershell
+aws cloudformation create-stack `
+  --stack-name ec2-apache-lab `
+  --template-body file://ec2-apache.yaml `
+  --parameters ParameterKey=KeyName,ParameterValue=meu-keypair
+```
+
+### YAML vs JSON
+| | YAML | JSON |
+|--|------|------|
+| Legibilidade | Mais fácil de ler/escrever | Mais verboso |
+| Comentários | Sim (`#`) | Não |
+| Intrinsic functions | Atalhos (`!Ref`, `!GetAtt`, `!Sub`) | Forma longa (`Ref`, `Fn::GetAtt`) |
+| Uso comum | Preferido em labs e produção | Útil quando gerado por ferramentas |
+
+### Boas práticas
+- Prefira **YAML** para templates escritos à mão.
+- Não deixe SSH (`22`) aberto em `0.0.0.0/0` em produção — restrinja ao seu IP.
+- Parametrize AMI, tipo de instância e CIDR.
+- Use **Outputs** para IPs, IDs e URLs.
+- Delete o stack ao terminar o lab para evitar cobrança (`Delete stack`).
+- Valide o template: `aws cloudformation validate-template --template-body file://template.yaml`
+
+### O que cada parte faz neste lab
+| Recurso | Papel |
+|---------|--------|
+| `AWS::EC2::SecurityGroup` | Firewall: regras de entrada (ingress) |
+| `AWS::EC2::Instance` | Máquina EC2 |
+| `UserData` | Script na primeira inicialização (instala Apache) |
+| `Parameters` | Entradas reutilizáveis (key pair, tipo) |
+| `Outputs` | Expõe IP/URL após o create |
+
+---
+
 ## Resumo rápido
 
 1. Crie a conta → proteja o root com MFA.
@@ -211,3 +431,4 @@ O **AWS Step Functions** orquestra etapas de um processo em um **workflow** (má
 3. Configure Budgets para não ser surpreendido pela fatura.
 4. Use **EC2** para computação, **EBS** como disco da EC2, **Elastic IP** para IP público fixo e **S3** para armazenar objetos.
 5. Use **Step Functions** para orquestrar workflows automatizados entre serviços AWS.
+6. Use **CloudFormation** para provisionar infraestrutura como código (templates YAML/JSON → stacks).
