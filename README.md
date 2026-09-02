@@ -68,7 +68,7 @@ Todos os usuários do grupo herdam as políticas anexadas ao grupo.
 
 ---
 
-    ## 5. Configuração de alerta de budget (orçamento)
+## 5. Configuração de alerta de budget (orçamento)
 
 O **AWS Budgets** avisa quando o custo ou o uso se aproxima de um limite.
 
@@ -204,9 +204,19 @@ O **AWS Step Functions** orquestra etapas de um processo em um **workflow** (má
 
 ---
 
-## 7. AWS CloudFormation
+## 8. AWS CloudFormation
 
-O **CloudFormation** é o serviço de **Infrastructure as Code (IaC)** da AWS: você descreve a infraestrutura em um template (**YAML** ou **JSON**) e a AWS cria/atualiza/apaga os recursos de forma ordenada e repetível.
+O **CloudFormation** é o serviço nativo de **Infrastructure as Code (IaC)** da AWS: você descreve a infraestrutura em um template (**YAML** ou **JSON**) e a AWS cria, atualiza ou remove os recursos de forma ordenada e repetível.
+
+### Para que serve
+- **Automatizar** a criação de recursos (EC2, VPC, S3, IAM, RDS, etc.) sem clicar manualmente no console.
+- **Padronizar ambientes** (dev, staging, prod) com o mesmo template e parâmetros diferentes.
+- **Versionar infraestrutura** no Git, como código de aplicação.
+- **Reproduzir** stacks de forma idêntica em outra conta ou região.
+- **Reduzir erros** humanos e acelerar deploys e rollbacks.
+- **Documentar** a infraestrutura de forma declarativa (o template é a documentação).
+
+**Casos de uso comuns:** subir um servidor web (EC2 + Security Group), criar buckets S3 com políticas, montar uma VPC completa, provisionar bancos RDS, pipelines CI/CD e ambientes de laboratório descartáveis.
 
 ### Como funciona
 1. Você escreve um **template** com recursos (`AWS::EC2::Instance`, `AWS::EC2::SecurityGroup`, etc.).
@@ -422,6 +432,99 @@ aws cloudformation create-stack `
 | `Parameters` | Entradas reutilizáveis (key pair, tipo) |
 | `Outputs` | Expõe IP/URL após o create |
 
+### CloudFormation vs Terraform
+
+Ambos são ferramentas de **IaC** (Infrastructure as Code), mas com abordagens diferentes.
+
+| Aspecto | CloudFormation | Terraform |
+|---------|----------------|-----------|
+| **Origem** | Serviço nativo da AWS | Open source (HashiCorp) |
+| **Escopo** | Somente AWS | Multi-cloud (AWS, Azure, GCP, etc.) |
+| **Linguagem** | YAML ou JSON (template CFN) | HCL (HashiCorp Configuration Language) |
+| **Motor de execução** | Gerenciado pela AWS (sem instalar nada) | CLI local/CI (`terraform plan/apply`) |
+| **Estado** | AWS mantém o estado do stack | Arquivo de estado local/remoto (ex.: S3 + DynamoDB) |
+| **Integração AWS** | Suporte imediato a novos recursos AWS | Depende de providers da comunidade/HashiCorp |
+| **Curva de aprendizado** | Mais simples se você usa só AWS | Mais flexível, mas exige aprender HCL e conceitos de state |
+| **Custo** | Gratuito (paga só pelos recursos criados) | Gratuito (open source); Terraform Cloud tem planos pagos |
+| **Rollback** | Automático em falhas de create/update | Depende da configuração; `terraform apply` reverte parcialmente |
+| **Drift detection** | Stack drift detection no console | `terraform plan` compara estado desejado vs real |
+| **Módulos** | Nested stacks, StackSets, módulos públicos (Registry) | Módulos reutilizáveis no Terraform Registry |
+
+#### Quando usar CloudFormation
+- Ambiente **100% AWS** e você quer a solução nativa.
+- Times que preferem **zero instalação** (só console/CLI AWS).
+- Integração direta com serviços AWS (SAM, CDK geram templates CFN).
+- Contas corporativas que já padronizaram em CFN/StackSets.
+
+#### Quando usar Terraform
+- Infraestrutura **multi-cloud** ou híbrida.
+- Equipe já usa HCL e ecossistema HashiCorp (Vault, Consul, etc.).
+- Precisa de providers para serviços fora da AWS (Cloudflare, Datadog, GitHub, etc.).
+- Quer um fluxo unificado de IaC para vários provedores.
+
+#### Exemplo equivalente em Terraform (mesmo lab EC2 + Apache)
+
+```hcl
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = "us-east-1"
+}
+
+variable "key_name" {
+  type = string
+}
+
+resource "aws_security_group" "web" {
+  name        = "web-sg"
+  description = "Libera SSH e HTTP"
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_instance" "web" {
+  ami           = "ami-0c02fb55956c7d316" # troque pela AMI da sua região
+  instance_type = "t2.micro"
+  key_name      = var.key_name
+
+  vpc_security_group_ids = [aws_security_group.web.id]
+
+  user_data = <<-EOF
+              #!/bin/bash
+              dnf update -y
+              dnf install -y httpd
+              systemctl enable httpd
+              systemctl start httpd
+              echo "<h1>Apache via Terraform</h1>" > /var/www/html/index.html
+              EOF
+}
+
+output "website_url" {
+  value = "http://${aws_instance.web.public_ip}"
+}
+```
+
+**Resumo:** CloudFormation é a ferramenta **nativa e integrada** da AWS; Terraform é **agnóstico de cloud** e mais flexível em ambientes heterogêneos. Para estudos focados em AWS, começar com CloudFormation ajuda a entender stacks, templates e recursos AWS; Terraform vale a pena quando o cenário envolve múltiplos provedores ou o time já adotou o ecossistema HashiCorp.
+
 ---
 
 ## Resumo rápido
@@ -431,4 +534,4 @@ aws cloudformation create-stack `
 3. Configure Budgets para não ser surpreendido pela fatura.
 4. Use **EC2** para computação, **EBS** como disco da EC2, **Elastic IP** para IP público fixo e **S3** para armazenar objetos.
 5. Use **Step Functions** para orquestrar workflows automatizados entre serviços AWS.
-6. Use **CloudFormation** para provisionar infraestrutura como código (templates YAML/JSON → stacks).
+6. Use **CloudFormation** para provisionar infraestrutura como código na AWS (templates YAML/JSON → stacks); use **Terraform** quando precisar de IaC multi-cloud.
